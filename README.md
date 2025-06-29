@@ -1,4 +1,4 @@
-# LoomClone Setup Instructions
+# ScreenFlowr Setup Instructions
 
 A professional screen recording web application built with Next.js, Clerk, and modern web technologies.
 
