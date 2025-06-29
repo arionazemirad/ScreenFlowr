@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Note: iCloud doesn't have a public OAuth API like Google Drive
     // This is a placeholder implementation

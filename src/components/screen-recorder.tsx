@@ -12,11 +12,9 @@ import {
   MicOff,
   Camera,
   CameraOff,
-  Settings,
   Download,
   Upload,
   Trash2,
-  Move,
   Palette,
   Circle,
   Eraser,
@@ -28,10 +26,8 @@ import {
   Eye,
   EyeOff,
   Undo2,
-  Redo2,
   MousePointer2,
   Highlighter,
-  Save,
   Minimize2,
   Maximize2,
   GripVertical,
@@ -102,7 +98,7 @@ export default function ScreenRecorder() {
   const [isPaused, setIsPaused] = useState(false);
   const [isCameraEnabled, setIsCameraEnabled] = useState(true);
   const [isMicEnabled, setIsMicEnabled] = useState(true);
-  const [showControls, setShowControls] = useState(true);
+
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [cameraPosition, setCameraPosition] = useState<Position>({
     x: 20,
@@ -119,7 +115,14 @@ export default function ScreenRecorder() {
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("pen");
   const [drawingShapes, setDrawingShapes] = useState<DrawingShape[]>([]);
   const [drawingTexts, setDrawingTexts] = useState<DrawingText[]>([]);
-  const [undoStack, setUndoStack] = useState<any[]>([]);
+  const [undoStack, setUndoStack] = useState<
+    {
+      strokes: DrawingStroke[];
+      shapes: DrawingShape[];
+      texts: DrawingText[];
+      timestamp: number;
+    }[]
+  >([]);
   const [showCameraPreview, setShowCameraPreview] = useState(false);
   const [isShapeDrawing, setIsShapeDrawing] = useState(false);
   const [currentShape, setCurrentShape] = useState<DrawingShape | null>(null);
@@ -144,7 +147,6 @@ export default function ScreenRecorder() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const cameraRef = useRef<HTMLVideoElement | null>(null);
@@ -198,6 +200,17 @@ export default function ScreenRecorder() {
     }
   }, [isRecording, isDrawing, showDrawingPanel]);
 
+  // Helper functions for advanced drawing - Define first
+  const saveToUndoStack = useCallback(() => {
+    const state = {
+      strokes: drawingStrokes,
+      shapes: drawingShapes,
+      texts: drawingTexts,
+      timestamp: Date.now(),
+    };
+    setUndoStack((prev) => [...prev.slice(-19), state]); // Keep last 20 states
+  }, [drawingStrokes, drawingShapes, drawingTexts]);
+
   // Handle drawing
   const startDrawing = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -215,7 +228,7 @@ export default function ScreenRecorder() {
         setIsShapeDrawing(true);
         const shape: DrawingShape = {
           id: Date.now().toString(),
-          type: drawingTool as any,
+          type: drawingTool as "rectangle" | "circle" | "arrow" | "line",
           startX: x,
           startY: y,
           endX: x,
@@ -252,7 +265,7 @@ export default function ScreenRecorder() {
         setCurrentStroke([point]);
       }
     },
-    [isDrawing, drawingColor, drawingSize, drawingTool]
+    [isDrawing, drawingColor, drawingSize, drawingTool, saveToUndoStack]
   );
 
   const draw = useCallback(
@@ -272,9 +285,129 @@ export default function ScreenRecorder() {
             prev ? { ...prev, endX: x, endY: y } : null
           );
 
-          // Redraw canvas with current shape
-          redrawCanvas();
-          drawShape(ctx, { ...currentShape, endX: x, endY: y });
+          // Clear and redraw canvas with current shape
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Redraw existing content
+          drawingStrokes.forEach((stroke) => {
+            if (stroke.points.length > 1) {
+              ctx.beginPath();
+              ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+              stroke.points.forEach((point) => {
+                ctx.lineTo(point.x, point.y);
+              });
+              ctx.strokeStyle = stroke.color;
+              ctx.lineWidth = stroke.size;
+              ctx.globalCompositeOperation =
+                stroke.tool === "eraser"
+                  ? "destination-out"
+                  : stroke.tool === "highlighter"
+                    ? "multiply"
+                    : "source-over";
+              ctx.stroke();
+              ctx.globalCompositeOperation = "source-over";
+            }
+          });
+
+          drawingShapes.forEach((shape) => {
+            ctx.strokeStyle = shape.color;
+            ctx.lineWidth = shape.size;
+            ctx.beginPath();
+
+            switch (shape.type) {
+              case "rectangle":
+                ctx.rect(
+                  shape.startX,
+                  shape.startY,
+                  shape.endX - shape.startX,
+                  shape.endY - shape.startY
+                );
+                break;
+              case "circle":
+                const radius = Math.sqrt(
+                  Math.pow(shape.endX - shape.startX, 2) +
+                    Math.pow(shape.endY - shape.startY, 2)
+                );
+                ctx.arc(shape.startX, shape.startY, radius, 0, 2 * Math.PI);
+                break;
+              case "line":
+                ctx.moveTo(shape.startX, shape.startY);
+                ctx.lineTo(shape.endX, shape.endY);
+                break;
+              case "arrow":
+                ctx.moveTo(shape.startX, shape.startY);
+                ctx.lineTo(shape.endX, shape.endY);
+                const angle = Math.atan2(
+                  shape.endY - shape.startY,
+                  shape.endX - shape.startX
+                );
+                const arrowLength = 20;
+                ctx.lineTo(
+                  shape.endX - arrowLength * Math.cos(angle - Math.PI / 6),
+                  shape.endY - arrowLength * Math.sin(angle - Math.PI / 6)
+                );
+                ctx.moveTo(shape.endX, shape.endY);
+                ctx.lineTo(
+                  shape.endX - arrowLength * Math.cos(angle + Math.PI / 6),
+                  shape.endY - arrowLength * Math.sin(angle + Math.PI / 6)
+                );
+                break;
+            }
+            ctx.stroke();
+          });
+
+          drawingTexts.forEach((text) => {
+            ctx.fillStyle = text.color;
+            ctx.font = `${text.size}px ${text.font}`;
+            ctx.fillText(text.text, text.x, text.y);
+          });
+
+          // Draw current shape
+          const shape = { ...currentShape, endX: x, endY: y };
+          ctx.strokeStyle = shape.color;
+          ctx.lineWidth = shape.size;
+          ctx.beginPath();
+
+          switch (shape.type) {
+            case "rectangle":
+              ctx.rect(
+                shape.startX,
+                shape.startY,
+                shape.endX - shape.startX,
+                shape.endY - shape.startY
+              );
+              break;
+            case "circle":
+              const radius = Math.sqrt(
+                Math.pow(shape.endX - shape.startX, 2) +
+                  Math.pow(shape.endY - shape.startY, 2)
+              );
+              ctx.arc(shape.startX, shape.startY, radius, 0, 2 * Math.PI);
+              break;
+            case "line":
+              ctx.moveTo(shape.startX, shape.startY);
+              ctx.lineTo(shape.endX, shape.endY);
+              break;
+            case "arrow":
+              ctx.moveTo(shape.startX, shape.startY);
+              ctx.lineTo(shape.endX, shape.endY);
+              const angle = Math.atan2(
+                shape.endY - shape.startY,
+                shape.endX - shape.startX
+              );
+              const arrowLength = 20;
+              ctx.lineTo(
+                shape.endX - arrowLength * Math.cos(angle - Math.PI / 6),
+                shape.endY - arrowLength * Math.sin(angle - Math.PI / 6)
+              );
+              ctx.moveTo(shape.endX, shape.endY);
+              ctx.lineTo(
+                shape.endX - arrowLength * Math.cos(angle + Math.PI / 6),
+                shape.endY - arrowLength * Math.sin(angle + Math.PI / 6)
+              );
+              break;
+          }
+          ctx.stroke();
         } else if (isDrawingActive) {
           // Continue drawing stroke
           const point: DrawingPoint = {
@@ -317,6 +450,9 @@ export default function ScreenRecorder() {
       drawingColor,
       drawingSize,
       drawingTool,
+      drawingStrokes,
+      drawingShapes,
+      drawingTexts,
     ]
   );
 
@@ -349,121 +485,19 @@ export default function ScreenRecorder() {
     drawingColor,
     drawingSize,
     drawingTool,
+    saveToUndoStack,
   ]);
 
-  // Helper functions for advanced drawing
-  const saveToUndoStack = useCallback(() => {
+  const clearDrawing = useCallback(() => {
+    // Save current state to undo stack before clearing
     const state = {
       strokes: drawingStrokes,
       shapes: drawingShapes,
       texts: drawingTexts,
       timestamp: Date.now(),
     };
-    setUndoStack((prev) => [...prev.slice(-19), state]); // Keep last 20 states
-  }, [drawingStrokes, drawingShapes, drawingTexts]);
+    setUndoStack((prev) => [...prev.slice(-19), state]);
 
-  const drawShape = useCallback(
-    (ctx: CanvasRenderingContext2D, shape: DrawingShape) => {
-      ctx.strokeStyle = shape.color;
-      ctx.lineWidth = shape.size;
-      ctx.beginPath();
-
-      switch (shape.type) {
-        case "rectangle":
-          ctx.rect(
-            shape.startX,
-            shape.startY,
-            shape.endX - shape.startX,
-            shape.endY - shape.startY
-          );
-          break;
-        case "circle":
-          const radius = Math.sqrt(
-            Math.pow(shape.endX - shape.startX, 2) +
-              Math.pow(shape.endY - shape.startY, 2)
-          );
-          ctx.arc(shape.startX, shape.startY, radius, 0, 2 * Math.PI);
-          break;
-        case "line":
-          ctx.moveTo(shape.startX, shape.startY);
-          ctx.lineTo(shape.endX, shape.endY);
-          break;
-        case "arrow":
-          // Draw line
-          ctx.moveTo(shape.startX, shape.startY);
-          ctx.lineTo(shape.endX, shape.endY);
-
-          // Draw arrowhead
-          const angle = Math.atan2(
-            shape.endY - shape.startY,
-            shape.endX - shape.startX
-          );
-          const arrowLength = 20;
-          ctx.lineTo(
-            shape.endX - arrowLength * Math.cos(angle - Math.PI / 6),
-            shape.endY - arrowLength * Math.sin(angle - Math.PI / 6)
-          );
-          ctx.moveTo(shape.endX, shape.endY);
-          ctx.lineTo(
-            shape.endX - arrowLength * Math.cos(angle + Math.PI / 6),
-            shape.endY - arrowLength * Math.sin(angle + Math.PI / 6)
-          );
-          break;
-      }
-      ctx.stroke();
-    },
-    []
-  );
-
-  const redrawCanvas = useCallback(() => {
-    if (!drawingCanvasRef.current) return;
-
-    const ctx = drawingCanvasRef.current.getContext("2d");
-    if (!ctx) return;
-
-    // Clear canvas
-    ctx.clearRect(
-      0,
-      0,
-      drawingCanvasRef.current.width,
-      drawingCanvasRef.current.height
-    );
-
-    // Redraw all strokes
-    drawingStrokes.forEach((stroke) => {
-      if (stroke.points.length > 1) {
-        ctx.beginPath();
-        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-        stroke.points.forEach((point) => {
-          ctx.lineTo(point.x, point.y);
-        });
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.size;
-        ctx.globalCompositeOperation =
-          stroke.tool === "eraser"
-            ? "destination-out"
-            : stroke.tool === "highlighter"
-              ? "multiply"
-              : "source-over";
-        ctx.stroke();
-        ctx.globalCompositeOperation = "source-over";
-      }
-    });
-
-    // Redraw all shapes
-    drawingShapes.forEach((shape) => {
-      drawShape(ctx, shape);
-    });
-
-    // Redraw all texts
-    drawingTexts.forEach((text) => {
-      ctx.fillStyle = text.color;
-      ctx.font = `${text.size}px ${text.font}`;
-      ctx.fillText(text.text, text.x, text.y);
-    });
-  }, [drawingStrokes, drawingShapes, drawingTexts, drawShape]);
-
-  const clearDrawing = useCallback(() => {
     if (drawingCanvasRef.current) {
       const ctx = drawingCanvasRef.current.getContext("2d");
       if (ctx) {
@@ -475,12 +509,11 @@ export default function ScreenRecorder() {
         );
       }
     }
-    saveToUndoStack();
     setDrawingStrokes([]);
     setDrawingShapes([]);
     setDrawingTexts([]);
     setCurrentStroke([]);
-  }, [saveToUndoStack]);
+  }, [drawingStrokes, drawingShapes, drawingTexts]);
 
   const undoDrawing = useCallback(() => {
     if (undoStack.length > 0) {
@@ -489,15 +522,101 @@ export default function ScreenRecorder() {
       setDrawingShapes(lastState.shapes);
       setDrawingTexts(lastState.texts);
       setUndoStack((prev) => prev.slice(0, -1));
-      redrawCanvas();
+
+      // Manually redraw instead of calling redrawCanvas to avoid circular dependency
+      if (drawingCanvasRef.current) {
+        const ctx = drawingCanvasRef.current.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(
+            0,
+            0,
+            drawingCanvasRef.current.width,
+            drawingCanvasRef.current.height
+          );
+
+          // Redraw strokes, shapes, and texts from the restored state
+          lastState.strokes.forEach((stroke) => {
+            if (stroke.points.length > 1) {
+              ctx.beginPath();
+              ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+              stroke.points.forEach((point) => {
+                ctx.lineTo(point.x, point.y);
+              });
+              ctx.strokeStyle = stroke.color;
+              ctx.lineWidth = stroke.size;
+              ctx.globalCompositeOperation =
+                stroke.tool === "eraser"
+                  ? "destination-out"
+                  : stroke.tool === "highlighter"
+                    ? "multiply"
+                    : "source-over";
+              ctx.stroke();
+              ctx.globalCompositeOperation = "source-over";
+            }
+          });
+
+          lastState.shapes.forEach((shape) => {
+            ctx.strokeStyle = shape.color;
+            ctx.lineWidth = shape.size;
+            ctx.beginPath();
+
+            switch (shape.type) {
+              case "rectangle":
+                ctx.rect(
+                  shape.startX,
+                  shape.startY,
+                  shape.endX - shape.startX,
+                  shape.endY - shape.startY
+                );
+                break;
+              case "circle":
+                const radius = Math.sqrt(
+                  Math.pow(shape.endX - shape.startX, 2) +
+                    Math.pow(shape.endY - shape.startY, 2)
+                );
+                ctx.arc(shape.startX, shape.startY, radius, 0, 2 * Math.PI);
+                break;
+              case "line":
+                ctx.moveTo(shape.startX, shape.startY);
+                ctx.lineTo(shape.endX, shape.endY);
+                break;
+              case "arrow":
+                ctx.moveTo(shape.startX, shape.startY);
+                ctx.lineTo(shape.endX, shape.endY);
+                const angle = Math.atan2(
+                  shape.endY - shape.startY,
+                  shape.endX - shape.startX
+                );
+                const arrowLength = 20;
+                ctx.lineTo(
+                  shape.endX - arrowLength * Math.cos(angle - Math.PI / 6),
+                  shape.endY - arrowLength * Math.sin(angle - Math.PI / 6)
+                );
+                ctx.moveTo(shape.endX, shape.endY);
+                ctx.lineTo(
+                  shape.endX - arrowLength * Math.cos(angle + Math.PI / 6),
+                  shape.endY - arrowLength * Math.sin(angle + Math.PI / 6)
+                );
+                break;
+            }
+            ctx.stroke();
+          });
+
+          lastState.texts.forEach((text) => {
+            ctx.fillStyle = text.color;
+            ctx.font = `${text.size}px ${text.font}`;
+            ctx.fillText(text.text, text.x, text.y);
+          });
+        }
+      }
     }
-  }, [undoStack, redrawCanvas]);
+  }, [undoStack]);
 
   const startRecording = useCallback(async () => {
     try {
       // Get screen capture
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { mediaSource: "screen" },
+        video: true,
         audio: true,
       });
 
@@ -550,7 +669,6 @@ export default function ScreenRecorder() {
 
       mediaRecorder.start();
       setIsRecording(true);
-      setShowControls(true);
 
       // Start timer
       timerRef.current = setInterval(() => {
@@ -580,10 +698,25 @@ export default function ScreenRecorder() {
 
     setIsRecording(false);
     setIsPaused(false);
-    setShowControls(false);
     setIsDrawing(false);
-    clearDrawing();
-  }, [clearDrawing]);
+
+    // Clear drawing canvas
+    if (drawingCanvasRef.current) {
+      const ctx = drawingCanvasRef.current.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(
+          0,
+          0,
+          drawingCanvasRef.current.width,
+          drawingCanvasRef.current.height
+        );
+      }
+    }
+    setDrawingStrokes([]);
+    setDrawingShapes([]);
+    setDrawingTexts([]);
+    setCurrentStroke([]);
+  }, []);
 
   const pauseRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {

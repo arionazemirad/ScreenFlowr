@@ -42,9 +42,7 @@ export default function CloudStorage({
   onUploadComplete,
 }: CloudStorageProps) {
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{
-    [key: string]: number;
-  }>({});
+
   const [uploadStatus, setUploadStatus] = useState<{
     [key: string]: "pending" | "uploading" | "success" | "error";
   }>({});
@@ -138,7 +136,22 @@ export default function CloudStorage({
     try {
       // Use the File System Access API if available (Chrome)
       if ("showSaveFilePicker" in window) {
-        const fileHandle = await (window as any).showSaveFilePicker({
+        const fileHandle = await (
+          window as unknown as {
+            showSaveFilePicker: (options: {
+              suggestedName: string;
+              types: Array<{
+                description: string;
+                accept: Record<string, string[]>;
+              }>;
+            }) => Promise<{
+              createWritable: () => Promise<{
+                write: (data: Blob) => Promise<void>;
+                close: () => Promise<void>;
+              }>;
+            }>;
+          }
+        ).showSaveFilePicker({
           suggestedName: `recording-${recording.timestamp.toISOString()}.webm`,
           types: [
             {
@@ -213,7 +226,7 @@ export default function CloudStorage({
   const connectiCloud = async () => {
     try {
       // This would connect to iCloud API
-      const response = await fetch("/api/auth/icloud");
+      await fetch("/api/auth/icloud");
 
       setConfig((prev) => ({
         ...prev,

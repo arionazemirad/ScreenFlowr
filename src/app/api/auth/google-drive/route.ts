@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     if (code) {
       // Exchange code for tokens
-      const { tokens } = await oauth2Client.getAccessToken(code);
+      const { tokens } = await oauth2Client.getToken(code);
 
       return NextResponse.json({
         accessToken: tokens.access_token,

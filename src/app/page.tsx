@@ -333,8 +333,9 @@ export default function Home() {
                       ))}
                     </div>
                     <p className='text-gray-600 mb-6 italic'>
-                      "ScreenFlowr has revolutionized how I create educational
-                      content. The real-time annotations are a game-changer!"
+                      &ldquo;ScreenFlowr has revolutionized how I create
+                      educational content. The real-time annotations are a
+                      game-changer!&rdquo;
                     </p>
                     <div className='flex items-center'>
                       <div className='w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mr-4'>
@@ -361,9 +362,9 @@ export default function Home() {
                       ))}
                     </div>
                     <p className='text-gray-600 mb-6 italic'>
-                      "The cloud integration is seamless. I can record, upload,
-                      and share with my team in seconds. Incredible efficiency
-                      boost!"
+                      &ldquo;The cloud integration is seamless. I can record,
+                      upload, and share with my team in seconds. Incredible
+                      efficiency boost!&rdquo;
                     </p>
                     <div className='flex items-center'>
                       <div className='w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-4'>
@@ -390,9 +391,9 @@ export default function Home() {
                       ))}
                     </div>
                     <p className='text-gray-600 mb-6 italic'>
-                      "Best screen recording tool I've used. The interface is
-                      intuitive and the quality is professional-grade. Highly
-                      recommended!"
+                      &ldquo;Best screen recording tool I&apos;ve used. The
+                      interface is intuitive and the quality is
+                      professional-grade. Highly recommended!&rdquo;
                     </p>
                     <div className='flex items-center'>
                       <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-4'>
